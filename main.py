@@ -1,3 +1,4 @@
+from turtle import position
 from dotenv import load_dotenv
 load_dotenv()
 import requests
@@ -16,6 +17,25 @@ class Team:
 
     def __repr__(self):
         return f'{self.league_member_id}, {self.credentials}: {self.owner_name}, {self.team_name}'
+
+class Player:
+    def __init__(self, athlete_id=None, player_name='', position_abbr=''):
+        self.athlete_id = athlete_id
+        self.player_name = player_name
+        self.position_abbr = position_abbr
+    
+    def __repr__(self):
+        return f'{self.player_name}, {self.position_abbr} : {self.athlete_id}'
+
+def find_player_by_id(playerId: str):
+    response = requests.get(f'https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/{playerId}')
+    response_json = response.json()
+
+    try:
+        return Player(playerId, response_json['athlete']['displayName'], response_json['athlete']['position']['abbreviation'])
+    except:
+        print(playerId, response_json)
+        return Player()
 
 try:
     league_id = os.environ.get('LEAGUE_ID')
@@ -52,7 +72,6 @@ print(response.url)
 #     print(transaction)
 
 ## Processing Member/Team Information
-
 members = {}
 
 for member in response.json()['members']:
@@ -66,13 +85,47 @@ for team in response.json()['teams']:
     teams_by_league_member_id[team['id']] = teams_by_credentials[team['primaryOwner']] = new_team
 
 
-print(teams_by_credentials)
+# print(teams_by_credentials)
 
-## Each owner
-# print(response.json()['members'][0])
+## Processing Transactions
+players = {}
+# print(response.json()['transactions'][0]['items'][0]['fromTeamId'], \
+#     find_player_by_id(response.json()['transactions'][0]['items'][0]['playerId']), \
+#         response.json()['transactions'][0]['items'][0]['toTeamId'], \
+#             response.json()['transactions'][0]['items'][0]['type'])
 
-# ## Each team
-# print(response.json()['teams'][0]['id'], response.json()['teams'][0]['primaryOwner'], response.json()['teams'][0]['location'], response.json()['teams'][0]['nickname'])
+output_file = open('transactions.txt', 'w')
 
-## Each transaction
-# print(response.json()['transactions'][0]['items'][0].keys())
+for transaction in response.json()['transactions']:
+    output = ''
+    for item in transaction['items']:
+        try:
+            fromTeamId = teams_by_league_member_id[item['fromTeamId']].owner_name
+        except:
+            fromTeamId = 'Free Agency'
+        
+        player = find_player_by_id(item['playerId'])
+        player_name = player.player_name
+        player_position = player.position_abbr
+
+        try:
+            toTeamId = teams_by_league_member_id[item['toTeamId']].owner_name
+        except:
+            toTeamId = 'Free Agency'
+
+        output += f"{fromTeamId} {item['type']} {player_name},{player_position} {toTeamId}\n"
+    # print(output)
+    output_file.write(output)
+    output_file.write('\n')
+
+output_file.close()
+
+# print(find_player_by_id('3115375'))
+
+# def main():
+#     app = MainApplication()
+#     app.mainloop()
+
+
+# if __name__ == "__main__":
+#     main()
