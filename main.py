@@ -1,4 +1,3 @@
-from turtle import position
 from dotenv import load_dotenv
 load_dotenv()
 import requests
@@ -60,9 +59,8 @@ class MainApplication:
         self.players[playerId] = Player(playerId, response_json['athlete']['displayName'], response_json['athlete']['position']['abbreviation'])
         return self.players[playerId]
     
-    def write_offers_reports(self, output_file, years: list[int], scoring_period_ids: list[int] = list(range(0,19))):
+    def write_offers_reports(self, output_file, years: list[int]):
         # year = 2021
-        # scoring_period_id = 17
         ## Offers Reports
         for year in years:
             output_file.write(f'{year}\n')
@@ -70,82 +68,78 @@ class MainApplication:
             url = f'https://fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leagues/{self.league_id}'
             cookies = {"swid":      self.cookie_swid,
                        "espn_s2":   self.cookie_espn_s2}
+            
+            params = {"view": ["mDraftDetail", "mStatus", "mSettings", "mTeam", "mTransactions2", "modular", "mNav"]}
 
-            for scoring_period_id in scoring_period_ids:
-                output_file.write(f'Scoring Period: {scoring_period_id}\n')
-                
-                params = {"scoringPeriodId": scoring_period_id,
-                        "view": ["mDraftDetail", "mStatus", "mSettings", "mTeam", "mTransactions2", "modular", "mNav"]}
+            response = requests.get(url, params=params, cookies=cookies)
+            if response.status_code != 200:
+                output_file.write(response.json)
+                # print(response.json)
+                continue
+            else:
+                print(response.url)
 
-                response = requests.get(url, params=params, cookies=cookies)
-                if response.status_code != 200:
-                    output_file.write(response.json)
-                    # print(response.json)
+            ## Processing Member/Team Information
+            members = {}
+
+            for member in response.json()['members']:
+                members[member['id']] = f"{member['firstName']} {member['lastName']}"
+
+            teams_by_league_member_id = {}
+            teams_by_credentials = {}
+
+            for team in response.json()['teams']:
+                new_team = Team(team['id'], team['primaryOwner'], members[team['primaryOwner']], f"{team['location']} {team['nickname']}")
+                teams_by_league_member_id[team['id']] = teams_by_credentials[team['primaryOwner']] = new_team
+            
+            ## Processing Transactions
+            if 'transactions' not in response.json():
+                continue
+
+            for transaction in response.json()['transactions']:
+                if not transaction or transaction['executionType'] == "CANCEL":
                     continue
-                else:
-                    print(response.url)
 
-                ## Processing Member/Team Information
-                members = {}
+                header = f"Type: {transaction['executionType']}, Bid Amount: {transaction['bidAmount']}\n"
+                output = ''
 
-                for member in response.json()['members']:
-                    members[member['id']] = f"{member['firstName']} {member['lastName']}"
-
-                teams_by_league_member_id = {}
-                teams_by_credentials = {}
-
-                for team in response.json()['teams']:
-                    new_team = Team(team['id'], team['primaryOwner'], members[team['primaryOwner']], f"{team['location']} {team['nickname']}")
-                    teams_by_league_member_id[team['id']] = teams_by_credentials[team['primaryOwner']] = new_team
-                
-                ## Processing Transactions
-                if 'transactions' not in response.json():
+                if 'items' not in transaction:
+                    print(transaction)
                     continue
 
-                for transaction in response.json()['transactions']:
-                    if not transaction or transaction['executionType'] == "CANCEL":
+                for item in transaction['items']:
+                    if item['type'] in ("LINEUP", "DRAFT"):
                         continue
 
-                    header = f"Type: {transaction['executionType']}, Bid Amount: {transaction['bidAmount']}\n"
-                    output = ''
+                    try:
+                        fromTeamId = teams_by_league_member_id[item['fromTeamId']].owner_name
+                    except:
+                        fromTeamId = 'Free Agency'
+                    
+                    player = self.find_player_by_id(item['playerId'])
+                    player_name = player.player_name
+                    player_position = player.position_abbr
 
-                    if 'items' not in transaction:
-                        print(transaction)
-                        continue
+                    try:
+                        toTeamId = teams_by_league_member_id[item['toTeamId']].owner_name
+                    except:
+                        toTeamId = 'Free Agency'
 
-                    for item in transaction['items']:
-                        if item['type'] in ("LINEUP", "DRAFT"):
-                            continue
-
-                        try:
-                            fromTeamId = teams_by_league_member_id[item['fromTeamId']].owner_name
-                        except:
-                            fromTeamId = 'Free Agency'
-                        
-                        player = self.find_player_by_id(item['playerId'])
-                        player_name = player.player_name
-                        player_position = player.position_abbr
-
-                        try:
-                            toTeamId = teams_by_league_member_id[item['toTeamId']].owner_name
-                        except:
-                            toTeamId = 'Free Agency'
-
-                        if item['type'] == "ADD":
-                            output += f"{toTeamId} {item['type']} {player_name},{player_position} from {fromTeamId}\n"
-                        else:
-                            output += f"{fromTeamId} {item['type']} {player_name},{player_position} to {toTeamId}\n"
-                        
-                    if output:
-                        output = header + output
-                        # print(output)
-                        output_file.write(output)
-                        output_file.write('\n')
+                    if item['type'] == "ADD":
+                        output += f"{toTeamId} {item['type']} {player_name},{player_position} from {fromTeamId}\n"
+                    else:
+                        output += f"{fromTeamId} {item['type']} {player_name},{player_position} to {toTeamId}\n"
+                    
+                if output:
+                    output = header + output
+                    # print(output)
+                    output_file.write(output)
+                    output_file.write('\n')
 
 def main():
     app = MainApplication()
-    output_file = open('transactions2021.txt', 'w')
-    years = [2021]
+    output_file = open('transactions-mc-2022.txt', 'w')
+    years = [2022]
     app.write_offers_reports(output_file, years)
     output_file.close()
 
