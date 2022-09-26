@@ -56,9 +56,6 @@ class Team:
         self.credentials = credentials
         self.owner_name = owner_name
         self.team_name = team_name
-    
-    def __str__(self):
-        return f'{self.league_member_id}, {self.credentials}: {self.owner_name}, {self.team_name}'
 
     def __repr__(self):
         return f'{self.league_member_id}, {self.credentials}: {self.owner_name}, {self.team_name}'
