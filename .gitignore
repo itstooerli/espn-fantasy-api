@@ -4,3 +4,4 @@
 *.csv
 .ipynb_checkpoints/
 league-analysis.py
+*.twbx
