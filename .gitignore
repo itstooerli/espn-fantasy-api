@@ -5,3 +5,5 @@
 .ipynb_checkpoints/
 league-analysis.py
 *.twbx
+*.twb
+*.twbr
